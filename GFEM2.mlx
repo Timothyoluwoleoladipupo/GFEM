@@ -1,0 +1,78 @@
+% Parameters
+nElementsX = 20;  % Number of elements in X direction
+nElementsY = 20;  % Number of elements in Y direction
+Lx = 1;  % Domain length in X
+Ly = 1;  % Domain length in Y
+k = 1;   % Diffusion coefficient (Poisson equation)
+
+% Generate mesh for rectangular domain
+x = linspace(0, Lx, nElementsX + 1);
+y = linspace(0, Ly, nElementsY + 1);
+[X, Y] = meshgrid(x, y);
+nodes = [X(:), Y(:)];
+
+% Triangulate the domain (Delaunay triangulation)
+elements = delaunay(nodes);
+
+% Number of nodes and elements
+nNodes = size(nodes, 1);
+nElements = size(elements, 1);
+
+% Initialize global stiffness matrix and load vector
+K = sparse(nNodes, nNodes);  % Global stiffness matrix
+F = zeros(nNodes, 1);        % Load vector
+
+% Loop over elements to assemble the global matrix
+for elem = 1:nElements
+    % Node indices of current element
+    nodeIndices = elements(elem, :);
+    
+    % Coordinates of the element's nodes
+    nodeCoords = nodes(nodeIndices, :);
+    
+    % Compute element stiffness matrix and load vector using linear basis functions
+    [Ke, Fe] = elementStiffnessMatrix(nodeCoords, k);
+    
+    % Assemble into global matrix
+    for i = 1:3
+        for j = 1:3
+            K(nodeIndices(i), nodeIndices(j)) = K(nodeIndices(i), nodeIndices(j)) + Ke(i, j);
+        end
+        F(nodeIndices(i)) = F(nodeIndices(i)) + Fe(i);
+    end
+end
+
+% Apply boundary conditions (Dirichlet boundary conditions)
+boundaryNodes = find(nodes(:,1) == 0 | nodes(:,1) == Lx | nodes(:,2) == 0 | nodes(:,2) == Ly);
+K(boundaryNodes, :) = 0;
+K(boundaryNodes, boundaryNodes) = speye(length(boundaryNodes));
+F(boundaryNodes) = 0;
+
+% Solve the system of equations K * u = F
+U = K \ F;
+
+% Post-processing: Plot solution
+trisurf(elements, nodes(:, 1), nodes(:, 2), U, 'EdgeColor', 'none');
+xlabel('x'); ylabel('y'); zlabel('Solution');
+title('FEM Solution of the Poisson Equation');
+colorbar;
+
+%% Function to compute element stiffness matrix and load vector
+function [Ke, Fe] = elementStiffnessMatrix(nodeCoords, k)
+    % Element stiffness matrix for a linear triangular element
+    x = nodeCoords(:, 1);
+    y = nodeCoords(:, 2);
+    
+    % Area of the triangular element
+    A = polyarea(x, y);
+    
+    % Compute the gradient of basis functions
+    b = [y(2) - y(3), y(3) - y(1), y(1) - y(2)];
+    c = [x(3) - x(2), x(1) - x(3), x(2) - x(1)];
+    
+    % Element stiffness matrix (2D linear triangular elements)
+    Ke = (k / (4 * A)) * (b' * b + c' * c);
+    
+    % Element load vector (assuming f = 1 as the source term)
+    Fe = A / 3 * ones(3, 1);  % Simplified load vector for constant source
+end
